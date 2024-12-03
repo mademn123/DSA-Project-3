@@ -1,5 +1,6 @@
 #include "scheduleHelper.h"
 
+// Constructor for the TaskScheduler class
 TaskScheduler::TaskScheduler(QWidget *parent) : QMainWindow(parent) {
     // Set the window title and size
     setWindowTitle("Priority Task Scheduler");
@@ -568,7 +569,6 @@ void TaskScheduler::printAdjacencyList() {
     }
     QMessageBox::information(this, "Adjacency List", result);
 }
-
 
 // Show priority graph for tasks
 void TaskScheduler::showPriorityGraph() {
