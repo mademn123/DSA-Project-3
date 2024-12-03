@@ -212,12 +212,15 @@ void TaskScheduler::addDependencyFromUI() {
     QString taskName = taskCombo1->currentText();
     QString depName = taskCombo2->currentText();
 
+    // Find the corresponding Task objects by their names
     Task *task = findTaskByName(taskName);
     Task *dep = findTaskByName(depName);
 
     if (task && dep && task != dep) {
+         // Check if the dependency does not already exist
         if (std::find(task->dependencies.begin(), task->dependencies.end(), dep) == task->dependencies.end()) {
             if (!isCircularDependency(task, dep)) {
+                // Add the dependency and update the adjacency list
                 addDependency(task, dep);
                 addEdge(task, dep); // Add edge to adjacency list
             } else {
@@ -239,12 +242,12 @@ void TaskScheduler::addDependency(Task *task, Task *dependency) {
 
 // Generate schedule for tasks
 void TaskScheduler::generateSchedule() {
-    std::vector<Task *> schedule;
-    std::unordered_map<Task *, bool> visited;
+    std::vector<Task *> schedule; // topological order of tasks
+    std::unordered_map<Task *, bool> visited; // Map to track visited tasks during DFS
 
     std::function<void(Task *)> dfs = [&](Task *task) {
         visited[task] = true;
-        for (auto dep: task->dependencies) {
+        for (auto dep: task->dependencies) { // Recursively visit all dependent tasks
             if (!visited[dep]) {
                 dfs(dep);
             }
@@ -252,6 +255,7 @@ void TaskScheduler::generateSchedule() {
         schedule.push_back(task);
     };
 
+    // Perform DFS for each task to generate the schedule
     for (auto task: tasks) {
         if (!visited[task]) {
             dfs(task);
@@ -260,6 +264,7 @@ void TaskScheduler::generateSchedule() {
 
     std::reverse(schedule.begin(), schedule.end());
 
+    // Create a string representation of the schedule
     QString result = "Schedule:\n";
     for (auto task: schedule) {
         result += QString("%1 - Due: %2, Duration: %3\n")
@@ -274,10 +279,11 @@ void TaskScheduler::generateSchedule() {
 // Visualize tasks and dependencies in a graph
 void TaskScheduler::visualizeTasks() {
     scene = new QGraphicsScene(this);
-    QGraphicsView *view = new QGraphicsView(scene);
+    QGraphicsView *view = new QGraphicsView(scene); // Create a QGraphicsView to display the scene
 
     std::unordered_map<Task *, TaskItem *> taskItems;
 
+     // Add tasks to the scene as nodes
     for (const auto &task: tasks) {
         TaskItem *item = new TaskItem(task);
         scene->addItem(item);
@@ -286,14 +292,16 @@ void TaskScheduler::visualizeTasks() {
         qreal y = QRandomGenerator::global()->bounded(400);
         item->setPos(x, y);
 
+        // Add a text label with the task's name
         QGraphicsTextItem *textItem = scene->addText(task->name);
         textItem->setParentItem(item);
         textItem->setPos(40 - textItem->boundingRect().width() / 2,
                          40 - textItem->boundingRect().height() / 2);
 
-        taskItems[task] = item;
+        taskItems[task] = item; // Store the graphical item associated with the task
     }
 
+    // Add edges to represent dependencies between tasks
     for (const auto &task: tasks) {
         TaskItem *startItem = taskItems[task];
         for (const auto &dep: task->dependencies) {
@@ -303,8 +311,8 @@ void TaskScheduler::visualizeTasks() {
     }
 
     view->setRenderHint(QPainter::Antialiasing);
-    view->setDragMode(QGraphicsView::ScrollHandDrag);
-    view->setMinimumSize(500, 500);
+    view->setDragMode(QGraphicsView::ScrollHandDrag); // Set the view to allow dragging the scene
+    view->setMinimumSize(500, 500); // Set the minimum size of the view
     view->show();
 }
 
@@ -337,21 +345,25 @@ void TaskScheduler::loadTasks() {
         in.setVersion(QDataStream::Qt_6_0);
 
         quint32 taskCount;
-        in >> taskCount;
+        in >> taskCount; // Read the number of tasks stored in the file
 
         tasks.clear();
         taskCombo1->clear();
         taskCombo2->clear();
         taskList->clear();
 
+        // Map to temporarily store dependencies as task names
         QMap<QString, QStringList> dependencyMap;
 
+        // Loop to load each task and its basic properties
         for (quint32 i = 0; i < taskCount; ++i) {
             Task *task = new Task;
             in >> task->name >> task->dueDate >> task->priority >> task->description >> task->duration;
 
+            // Read the number of dependencies for the task
             quint32 depCount;
-            in >> depCount;
+            in >> depCount; 
+            
             QStringList deps;
             for (quint32 j = 0; j < depCount; ++j) {
                 QString depName;
@@ -360,7 +372,10 @@ void TaskScheduler::loadTasks() {
             }
             dependencyMap[task->name] = deps;
 
+            // Add the task to the list of tasks
             tasks.push_back(task);
+
+            // Add the task to the UI task list
             addTaskToList(task);
         }
 
@@ -736,10 +751,10 @@ void TaskScheduler::checkFileContents() {
         in.setVersion(QDataStream::Qt_6_0); // Ensure this matches the version used for writing
 
         quint32 taskCount;
-        in >> taskCount;
+        in >> taskCount; // Read the number of tasks stored in the file
         qDebug() << "Number of tasks:" << taskCount;
 
-        if (in.status() != QDataStream::Ok) {
+        if (in.status() != QDataStream::Ok) { // Check if reading the task count was successful
             qDebug() << "Error reading task count:" << in.status();
             return;
         }
@@ -751,33 +766,40 @@ void TaskScheduler::checkFileContents() {
             QString description;
             qint64 duration;
 
+            // Debug log for tracking task reading progress
             qDebug() << "Reading task" << i + 1;
             qDebug() << "Stream position before read:" << file.pos();
 
+            
+            // Read the task's name
             in >> name;
             if (in.status() != QDataStream::Ok) {
                 qDebug() << "Error reading name:" << in.status();
                 break;
             }
 
+            // Read the task's due date
             in >> dueDate;
             if (in.status() != QDataStream::Ok) {
                 qDebug() << "Error reading dueDate:" << in.status();
                 break;
             }
 
+            // Read the task's priority
             in >> priority;
             if (in.status() != QDataStream::Ok) {
                 qDebug() << "Error reading priority:" << in.status();
                 break;
             }
 
+            // Read the task's description
             in >> description;
             if (in.status() != QDataStream::Ok) {
                 qDebug() << "Error reading description:" << in.status();
                 break;
             }
 
+            // Read the task's duration
             in >> duration;
             if (in.status() != QDataStream::Ok) {
                 qDebug() << "Error reading duration:" << in.status();
