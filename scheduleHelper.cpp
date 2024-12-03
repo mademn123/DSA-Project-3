@@ -1,6 +1,7 @@
 #include "scheduleHelper.h"
 
 TaskScheduler::TaskScheduler(QWidget *parent) : QMainWindow(parent) {
+    // Set the window title and size
     setWindowTitle("Priority Task Scheduler");
     setGeometry(100, 100, 800, 600);
 
@@ -35,6 +36,7 @@ TaskScheduler::TaskScheduler(QWidget *parent) : QMainWindow(parent) {
     QGroupBox *inputGroup = new QGroupBox("Add New Task");
     QGridLayout *inputLayout = new QGridLayout(inputGroup);
 
+    // Initialize task input fields
     nameInput = new QLineEdit();
     dueDateInput = new QDateTimeEdit(QDateTime::currentDateTime());
     dueDateInput->setCalendarPopup(true);
@@ -47,6 +49,7 @@ TaskScheduler::TaskScheduler(QWidget *parent) : QMainWindow(parent) {
     durationInput->setRange(1, 10080); // 1 minute to 1 week (7 × 24 × 60)
     durationInput->setSuffix(" minutes");
 
+    // Add input widgets to the layout
     inputLayout->addWidget(new QLabel("Name:"), 0, 0);
     inputLayout->addWidget(nameInput, 0, 1);
     inputLayout->addWidget(new QLabel("Due Date:"), 1, 0);
@@ -63,6 +66,7 @@ TaskScheduler::TaskScheduler(QWidget *parent) : QMainWindow(parent) {
 
     mainLayout->addWidget(inputGroup);
 
+    // Set up the group for managing task dependencies
     QGroupBox *depGroup = new QGroupBox("Manage Dependencies");
     QGridLayout *depLayout = new QGridLayout(depGroup);
 
@@ -93,6 +97,7 @@ TaskScheduler::TaskScheduler(QWidget *parent) : QMainWindow(parent) {
 
     taskList->installEventFilter(this);
 
+    // Set up action buttons
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     QPushButton *scheduleButton = new QPushButton("Generate Schedule");
     QPushButton *saveButton = new QPushButton("Save Tasks");
