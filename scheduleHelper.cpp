@@ -213,6 +213,7 @@ void TaskScheduler::addDependencyFromUI() {
         if (std::find(task->dependencies.begin(), task->dependencies.end(), dep) == task->dependencies.end()) {
             if (!isCircularDependency(task, dep)) {
                 addDependency(task, dep);
+                addEdge(task, dep); // Add edge to adjacency list
             } else {
                 QMessageBox::warning(this, "Error", "Circular dependency detected!");
             }
@@ -507,3 +508,384 @@ void TaskScheduler::calculateAndAssignPriority(Task *task) {
     task->priority = std::max(1, std::min(10, finalPriority));
 }
 
+// Format task duration for display
+QString TaskScheduler::formatDuration(int minutes) {
+    if (minutes < 60) {
+        return QString("%1 minutes").arg(minutes);
+    } else if (minutes < 1440) {
+        int hours = minutes / 60;
+        int mins = minutes % 60;
+        return QString("%1 hours %2 minutes").arg(hours).arg(mins);
+    } else {
+        int days = minutes / 1440;
+        int hours = (minutes % 1440) / 60;
+        int mins = minutes % 60;
+        return QString("%1 days %2 hours %3 minutes").arg(days).arg(hours).arg(mins);
+    }
+}
+
+// Helper function to find a task by name
+Task *TaskScheduler::findTaskByName(const QString &name) {
+    auto it = std::find_if(tasks.begin(), tasks.end(),
+                           [&name](const Task *task) { return task->name == name; });
+    return (it != tasks.end()) ? *it : nullptr;
+}
+
+// Add edge for adjacency list
+void TaskScheduler::addEdge(Task *task1, Task *task2) {
+    if (std::find(task1->adjacentTasks.begin(), task1->adjacentTasks.end(), task2) == task1->adjacentTasks.end()) {
+        task1->adjacentTasks.push_back(task2);
+    }
+}
+
+
+// Remove edge from adjacency list
+void TaskScheduler::removeEdge(Task *task1, Task *task2) {
+    task1->adjacentTasks.erase(std::remove(task1->adjacentTasks.begin(), task1->adjacentTasks.end(), task2),
+                               task1->adjacentTasks.end());
+    task2->adjacentTasks.erase(std::remove(task2->adjacentTasks.begin(), task2->adjacentTasks.end(), task1),
+                               task2->adjacentTasks.end());
+}
+
+// Print adjacency list for tasks
+void TaskScheduler::printAdjacencyList() {
+    QString result = "Adjacency List:\n";
+    for (const auto &task : tasks) {
+        result += task->name + ": ";
+        if (task->adjacentTasks.empty()) {
+            result += "(No dependencies)";
+        } else {
+            for (const auto &adjTask : task->adjacentTasks) {
+                result += adjTask->name + " ";
+            }
+        }
+        result += "\n";
+    }
+    QMessageBox::information(this, "Adjacency List", result);
+}
+
+
+// Show priority graph for tasks
+void TaskScheduler::showPriorityGraph() {
+    if (priorityGraphWindow) {
+        priorityGraphWindow->close();
+        delete priorityGraphWindow;
+        priorityGraphWindow = nullptr;
+    }
+
+    QMap<int, int> priorityCounts;
+    for (const auto &task : tasks) {
+        priorityCounts[task->priority]++;
+    }
+
+    QBarSet *set = new QBarSet("Tasks");
+    QStringList categories;
+    int maxCount = 0;
+
+    for (auto it = priorityCounts.begin(); it != priorityCounts.end(); ++it) {
+        *set << it.value();
+        categories << QString::number(it.key());
+        maxCount = qMax(maxCount, it.value());
+    }
+
+    QBarSeries *series = new QBarSeries();
+    series->append(set);
+
+    QChart *chart = new QChart();
+    chart->addSeries(series);
+    chart->setTitle("Number of Tasks by Priority");
+    chart->setAnimationOptions(QChart::SeriesAnimations);
+
+    chart->setBackgroundBrush(QColor(53, 53, 53));
+    chart->setTitleBrush(QColor(255, 255, 255));
+    chart->setTitleFont(QFont("Arial", 18, QFont::Bold));
+
+    QBarCategoryAxis *axisX = new QBarCategoryAxis();
+    axisX->append(categories);
+    chart->addAxis(axisX, Qt::AlignBottom);
+    series->attachAxis(axisX);
+    axisX->setLabelsColor(QColor(255, 255, 255));
+
+    QValueAxis *axisY = new QValueAxis();
+    chart->addAxis(axisY, Qt::AlignLeft);
+    series->attachAxis(axisY);
+    axisY->setRange(0, maxCount + 1);
+    axisY->setLabelFormat("%d");
+    axisY->setLabelsColor(QColor(255, 255, 255));
+
+    chart->legend()->setVisible(true);
+    chart->legend()->setAlignment(Qt::AlignBottom);
+    chart->legend()->setLabelColor(QColor(255, 255, 255));
+
+    QLinearGradient gradient(0, 0, 0, 1);
+    gradient.setColorAt(0.0, QColor(255, 0, 0));
+    gradient.setColorAt(0.5, QColor(255, 255, 0));
+    gradient.setColorAt(1.0, QColor(0, 255, 0));
+    gradient.setCoordinateMode(QGradient::ObjectBoundingMode);
+
+    set->setBrush(gradient);
+
+    series->setLabelsVisible(true);
+    series->setLabelsPosition(QAbstractBarSeries::LabelsOutsideEnd);
+    connect(series, &QBarSeries::hovered, this, &TaskScheduler::handleBarHover);
+
+    QChartView *chartView = new QChartView(chart);
+    chartView->setRenderHint(QPainter::Antialiasing);
+
+    priorityGraphWindow = new QMainWindow();
+    priorityGraphWindow->setCentralWidget(chartView);
+    priorityGraphWindow->resize(600, 400);
+    priorityGraphWindow->setWindowTitle("Task Priority Distribution");
+    priorityGraphWindow->show();
+}
+
+// Handle bar hover for priority graph
+void TaskScheduler::handleBarHover(bool status, int index, QBarSet *barSet) {
+    if (status) {
+        QToolTip::showText(QCursor::pos(),
+                           QString("Priority %1: %2 task(s)")
+                                   .arg(index + 1)
+                                   .arg(barSet->at(index)));
+    }
+}
+
+// Check for circular dependency
+bool TaskScheduler::isCircularDependency(Task *task, Task *newDep) {
+    std::unordered_set<Task *> visited;
+    std::function<bool(Task *)> dfs = [&](Task *current) {
+        if (current == task) return true;
+        if (visited.find(current) != visited.end()) return false;
+        visited.insert(current);
+        for (auto dep: current->dependencies) {
+            if (dfs(dep)) return true;
+        }
+        return false;
+    };
+    return dfs(newDep);
+}
+
+// Remove dependency
+void TaskScheduler::removeDependency() {
+    QString taskName = taskCombo1->currentText();
+    QString depName = taskCombo2->currentText();
+
+    Task *task = findTaskByName(taskName);
+    Task *dep = findTaskByName(depName);
+
+    if (task && dep) {
+        task->dependencies.erase(
+                std::remove(task->dependencies.begin(), task->dependencies.end(), dep),
+                task->dependencies.end()
+        );
+        removeEdge(task, dep); // Remove edge from adjacency list
+        updateDependenciesDisplay();
+    } else {
+        QMessageBox::warning(this, "Error", "Could not find specified tasks.");
+    }
+}
+// Update dependencies display
+void TaskScheduler::updateDependenciesDisplay() {
+    for (int i = 0; i < taskList->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = taskList->topLevelItem(i);
+        QString itemName = item->text(0);
+        Task *task = findTaskByName(itemName);
+        if (task) {
+            QString depText;
+            for (const auto &dep: task->dependencies) {
+                depText += dep->name + ", ";
+            }
+            item->setText(4, depText);
+        }
+    }
+}
+
+// Sort tasks by due date
+void TaskScheduler::sortTasksByDueDate() {
+    taskList->sortItems(1, Qt::AscendingOrder);
+}
+
+// Sort tasks by priority
+void TaskScheduler::sortTasksByPriority() {
+    taskList->sortItems(2, Qt::AscendingOrder);
+}
+
+// Exit application
+void TaskScheduler::exitApplication() {
+    QApplication::closeAllWindows();
+    QApplication::quit();
+}
+
+// Event filter for custom sorting
+bool TaskScheduler::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == taskList && event->type() == QEvent::ChildAdded) {
+        taskList->sortItems(1, Qt::AscendingOrder);
+        return true;
+    }
+    return QObject::eventFilter(obj, event);
+}
+
+void TaskScheduler::checkFileContents() {
+    QFile file("tasks.dat");
+    if (file.open(QIODevice::ReadOnly)) {
+        QDataStream in(&file);
+        in.setVersion(QDataStream::Qt_6_0); // Ensure this matches the version used for writing
+
+        quint32 taskCount;
+        in >> taskCount;
+        qDebug() << "Number of tasks:" << taskCount;
+
+        if (in.status() != QDataStream::Ok) {
+            qDebug() << "Error reading task count:" << in.status();
+            return;
+        }
+
+        for (quint32 i = 0; i < taskCount; ++i) {
+            QString name;
+            QDate dueDate;
+            int priority;
+            QString description;
+            qint64 duration;
+
+            qDebug() << "Reading task" << i + 1;
+            qDebug() << "Stream position before read:" << file.pos();
+
+            in >> name;
+            if (in.status() != QDataStream::Ok) {
+                qDebug() << "Error reading name:" << in.status();
+                break;
+            }
+
+            in >> dueDate;
+            if (in.status() != QDataStream::Ok) {
+                qDebug() << "Error reading dueDate:" << in.status();
+                break;
+            }
+
+            in >> priority;
+            if (in.status() != QDataStream::Ok) {
+                qDebug() << "Error reading priority:" << in.status();
+                break;
+            }
+
+            in >> description;
+            if (in.status() != QDataStream::Ok) {
+                qDebug() << "Error reading description:" << in.status();
+                break;
+            }
+
+            in >> duration;
+            if (in.status() != QDataStream::Ok) {
+                qDebug() << "Error reading duration:" << in.status();
+                break;
+            }
+
+            qDebug() << "Stream position after read:" << file.pos();
+            qDebug() << "Task" << i + 1 << ":" << name << dueDate.toString() << priority << description << duration;
+        }
+
+        qDebug() << "Final stream position:" << file.pos();
+        qDebug() << "File size:" << file.size();
+    } else {
+        qDebug() << "Failed to open file for checking:" << file.errorString();
+    }
+}
+
+void TaskScheduler::addDependency() {
+    QString taskName = taskCombo1->currentText();
+    QString depName = taskCombo2->currentText();
+
+// Find the task item early
+    QTreeWidgetItem * item = nullptr;
+    QList < QTreeWidgetItem * > items = taskList->findItems(taskName, Qt::MatchExactly, 0);
+    if (!items.isEmpty()) {
+        item = items[0];
+    } else {
+        QMessageBox::warning(this, "Error", "Could not find the specified task.");
+        return;
+    }
+
+    Task *task = nullptr;
+    Task *dep = nullptr;
+
+    for (auto t: tasks) {
+        if (t->name == taskName) task = t;
+        if (t->name == depName) dep = t;
+    }
+
+    if (!task || !dep) {
+        QMessageBox::warning(this, "Error", "Could not find specified tasks.");
+        if (task) updateTaskColor(item, task->priority);
+        return;
+    }
+
+    if (task && dep) {
+
+// Check if the dependency already exists
+        if (std::find(task->dependencies.begin(), task->dependencies.end(), dep) != task->dependencies.end()) {
+            QMessageBox::warning(this, "Duplicate Dependency",
+                                 QString("The dependency %1 -> %2 already exists.").arg(taskName).arg(depName));
+            updateTaskColor(item, task->priority);
+            return;
+        }
+
+// Check for circular dependency
+        if (isCircularDependency(task, dep)) {
+            QMessageBox::warning(this, "Circular Dependency",
+                                 QString("Adding this dependency would create a circular reference between %1 and %2.").arg(
+                                         taskName).arg(depName));
+            updateTaskColor(item, task->priority);
+            return;
+        }
+
+        task->dependencies.push_back(dep);
+        addEdge(task, dep); // Add this line
+        QTreeWidgetItem * item = taskList->findItems(taskName, Qt::MatchExactly, 0)[0];
+        item->setText(4, item->text(4) + depName + ", ");
+
+// Recalculate priority
+        calculateAndAssignPriority(task);
+        item->setText(2, QString::number(task->priority));
+
+// Update color based on new priority
+        QColor backgroundColor;
+        QColor itemColor = Qt::white;
+
+        if (task->priority >= 8) {
+            itemColor = QColor(200, 0, 0); // Brighter red for high priority
+        } else if (task->priority >= 4) {
+            itemColor = QColor(200, 200, 0); // Brighter yellow for medium priority
+        } else {
+            itemColor = QColor(0, 150, 0); // Brighter green for low priority
+        }
+
+// Adjust color based on priority
+        int priorityAdjustment = (10 - task->priority) * 10;
+        backgroundColor = backgroundColor.darker(100 + priorityAdjustment);
+
+// Ensure text is always visible
+        if (backgroundColor.lightness() > 128) {
+            itemColor = Qt::black;
+        }
+
+        for (int i = 0; i < item->columnCount(); ++i) {
+            item->setBackground(i, backgroundColor);
+            item->setForeground(i, itemColor);
+        }
+    }
+}
+
+void TaskScheduler::updateTaskColor(QTreeWidgetItem *item, int priority) {
+    QColor itemColor;
+    if (priority >= 8) {
+        itemColor = QColor(150, 50, 50); // Darker red for high priority
+    } else if (priority >= 4) {
+        itemColor = QColor(150, 150, 50); // Darker yellow for medium priority
+    } else {
+        itemColor = QColor(50, 150, 50); // Darker green for low priority
+    }
+
+    for (int i = 0; i < item->columnCount(); ++i) {
+        item->setBackground(i, itemColor);
+        item->setForeground(i, QColor(255, 255, 255)); // Set text color to white
+    }
+}
